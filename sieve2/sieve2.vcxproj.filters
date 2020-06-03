@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\MPITest\sieve2.c">
+    <ClCompile Include="sieve2.c">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
