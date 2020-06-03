@@ -1,34 +1,43 @@
 /* 优化1：去掉偶数
    优化2：消除广播 
-   优化3：cache优化 E5-2660v4 L3缓存35MB */
+   优化3：cache优化 目标机E5-2660v4 L3缓存35MB  本机G4600 L3缓存3MB*/
 
 #include "mpi.h"
 #include <math.h>
 #include <stdio.h>
 #define MIN(a,b)  ((a)<(b)?(a):(b))
-#define CACHE_SIZE 36700160        /* 35MB */
+#define CACHE_SIZE 36700160       /* 35MB */
+
 
 int main(int argc, char *argv[])
 {
-    int    count;        /* Local prime count */
-    double elapsed_time; /* Parallel execution time */
-    int    first;        /* Index of first multiple */
-    int    global_count; /* Global prime count */
-    int    high_value;   /* Highest value on this proc */
-    int    i;
-    int    id;           /* Process ID number */
-    int    index;        /* Index of current prime */
-    int    low_value;    /* Lowest value on this proc */
-    char  *marked;       /* Portion of 2,...,'n' */
-    int    n;            /* Sieving from 2, ..., 'n' */
-    int    p;            /* Number of processes */
-    int    proc0_size;   /* Size of proc 0's subarray */
-    int    prime;        /* Current prime */
-    int    size;         /* Elements in 'marked' */
-    int    local_index;  /* Index of current local prime ofr each proc */
-    int    local_prime;  /* Current local prime for each proc */
-    char  *local_primes; /* Prime numbers for each proc of 2,...,'sqrt(high_value)' */
-    int    local_size;   /* Elements in 'local_primes' */
+    int   count;              /* Local prime count */
+    double elapsed_time;      /* Parallel execution time */
+    /*uint64_t    first;        /* Index of first multiple */
+    int    global_count;      /* Global prime count */
+    uint64_t    high_value;   /* Highest value on this proc */
+    uint64_t    i;
+    int    id;                /* Process ID number */
+    uint64_t    index;        /* Index of current prime */
+    uint64_t    low_value;    /* Lowest value on this proc */
+    char  *marked;            /* Portion of 2,...,'n' */
+    uint64_t    n;            /* Sieving from 2, ..., 'n' */
+    int    p;                 /* Number of processes */
+    uint64_t    proc0_size;   /* Size of proc 0's subarray */
+    uint64_t    prime;        /* Current prime */
+    uint64_t    size;         /* Elements in 'marked' */
+    uint64_t    local_index;  /* Index of current local prime ofr each proc */
+    uint64_t    local_prime;  /* Current local prime for each proc */
+    char  *local_primes;      /* Prime numbers for each proc of 2,...,'sqrt(high_value)' */
+    uint64_t    local_size;   /* Elements in 'local_primes' */
+
+    int block_step;                /* Current block number */
+    int block_step_num;            /* Number of blocks could 'n' be divided */
+    uint64_t    block_first;       /* Index of first multiple in this block */
+    uint64_t    block_size;        /* Size of a block's subarray */
+    uint64_t    block_low_value;   /* Lowest value of this block */
+    uint64_t    block_high_value;  /* Highest value of this block */
+
 
     MPI_Init(&argc, &argv);
 
@@ -54,7 +63,7 @@ int main(int argc, char *argv[])
     low_value = 2 + id * (n - 1) / p;
     high_value = 1 + (id + 1)*(n - 1) / p;
     size = (high_value - low_value + 1) / 2;
-    local_size = ((int)sqrt((double)high_value) + 1) / 2 - 1;  /* 保留奇数，同优化2方法 */
+    local_size = ((int)sqrt((double)high_value) + 1) / 2 - 1;  /* just like the sieve3.c */
 
     /* Bail out if all the primes used for sieving are
        not all held by process 0 */
@@ -90,26 +99,47 @@ int main(int argc, char *argv[])
         local_prime = 2 * local_index + 3;
     } while (local_prime * local_prime <= (int)sqrt((double)high_value));
 
-
-    index = 0;
-    prime = 3;
-    do {
-        if (prime * prime > low_value)
-            first = (prime * prime - low_value) / 2;
-        else {
-            if (!(low_value % prime)) first = low_value % 2 ? 0 : prime / 2;
+    block_size = CACHE_SIZE / sizeof(uint64_t);
+    block_step_num = size / block_size;
+    if (size > block_step_num * block_size) {
+        block_step_num += 1;
+    }
+    /*printf("size=%lld, block_size=%lld, block_step_num=%d\n", size, block_size, block_step_num);*/
+    for (block_step = 0; block_step < block_step_num; block_step++) {
+        block_low_value = low_value + block_size * block_step * 2;
+        block_high_value = MIN(high_value, block_low_value + block_size * 2);
+        /*printf("step %d, block_low_value=%lld, block_high_value=%lld\n", block_step, block_low_value, block_high_value);*/
+        index = 0;
+        prime = 3;
+        do {
+            if (prime * prime > block_low_value)
+                block_first = (prime * prime - block_low_value) / 2;
             else {
-                first = prime - low_value % prime;
-                if (!((low_value + first) % 2)) first = (prime + first) / 2;
-                else first /= 2;
+                if (!(block_low_value % prime)) block_first = block_low_value % 2 ? 0 : prime / 2;
+                else {
+                    block_first = prime - block_low_value % prime;
+                    if (!((block_low_value + block_first) % 2)) block_first = (prime + block_first) / 2;
+                    else block_first /= 2;
+                }
             }
-        }
-        for (i = first; i < size; i += prime) {
-            marked[i] = 1;
-        }
-        while (local_primes[++index]);
-        prime = index * 2 + 3;
-    } while (prime * prime <= high_value);
+            if (block_step < block_step_num - 1) {
+                for (i = block_first; i < block_size; i += prime) {
+                    marked[i + block_size * block_step] = 1;
+                }
+            }
+            else {  /* the last block may be not full */
+                for (i = block_first; i < block_size; i += prime) {
+                    if (i + block_size * block_step >= size) {
+                        break;
+                    }
+                    marked[i + block_size * block_step] = 1;
+                }
+            }
+            while (local_primes[++index]);
+            prime = index * 2 + 3;
+        } while (prime * prime <= block_high_value);
+    }
+
     count = 0;
     for (i = 0; i < size; i++) {
         if (!marked[i]) count++;
@@ -131,7 +161,7 @@ int main(int argc, char *argv[])
     /* Print the results */
 
     if (!id) {
-        printf("There are %d primes less than or equal to %d\n",
+        printf("There are %d primes less than or equal to %lld\n",
             global_count, n);
         printf("SIEVE (%d) %10.6f\n", p, elapsed_time);
     }

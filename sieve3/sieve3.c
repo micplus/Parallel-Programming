@@ -52,7 +52,7 @@ int main(int argc, char *argv[])
     low_value = 2 + id * (n - 1) / p;
     high_value = 1 + (id + 1)*(n - 1) / p;
     size = (high_value - low_value + 1) / 2;
-    local_size = ((int)sqrt((double)high_value) + 1) / 2 - 1;  /* 保留奇数，同优化2方法 */
+    local_size = ((int)sqrt((double)high_value) + 1) / 2 - 1;  /* just like sieve2.c */
 
     /* Bail out if all the primes used for sieving are
        not all held by process 0 */
