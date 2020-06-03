@@ -1,4 +1,4 @@
-/* 原来的程序 */
+/* 原来的程序 */ 
 
 #include "mpi.h"
 #include <math.h>

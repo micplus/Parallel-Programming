@@ -1,4 +1,4 @@
-/* 优化1：去掉偶数 */
+/* 优化1：去掉偶数 */ 
 
 #include "mpi.h"
 #include <math.h>
