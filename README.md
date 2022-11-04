@@ -1,5 +1,5 @@
 # Parallel-Programming
-MPI并行计算入门——埃式素数筛法的并行程序优化
+MPI并行计算入门——埃氏素数筛法的并行程序优化
 
 sieve1.c——原始程序 \
 sieve2.c——去除偶数优化 \
